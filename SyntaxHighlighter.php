@@ -1,6 +1,6 @@
 <?php
 /**
- * Syntax highlighting extension for MediaWiki 1.18 using SyntaxHighlighter
+ * Syntax highlighting extension for MediaWiki 1.18 and above using SyntaxHighlighter
  * Copyright (C) 2012 Seong Jae Lee <seongjae@gmail.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -9,10 +9,10 @@
  * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
  * of the Software, and to permit persons to whom the Software is furnished to do
  * so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,7 +26,7 @@
  * @file
  * @ingroup Extensions
  * @author Seong Jae Lee
- * 
+ *
  * This extension wraps SyntaxHighlighter: http://alexgorbatchev.com/SyntaxHighlighter/
  */
 
@@ -35,113 +35,133 @@ if( !defined( 'MEDIAWIKI' ) ) {
 	die(-1);
 }
 
+/**
+ * Options:
+ * $wgSyntaxHighlighterOptions
+ *	An array that goes into SyntaxHighlighter.defaults. Note that array keys and values are ALWAYS strings.
+ *	For more information, refer http://alexgorbatchev.com/SyntaxHighlighter/manual/configuration/#syntaxhighlighterdefaults
+ *	For example, `$wgSyntaxHighlighterOption['auto-links'] = 'true';`.
+ */
+$wgSyntaxHighlighterOptions = array();
+
 $wgExtensionCredits['parserhook']['SyntaxHighlighter'] = array(
 	'path'		=> __FILE__,
 	'name'		=> 'SyntaxHighlighter',
-	'description'	=> 'uses alexgorbatchev.com/SyntaxHighlighter',
-	'version'	=> '1.0',
-	'author'	=> 'Seong Jae Lee'
+	'description'	=> 'A syntax highlighter extension using alexgorbatchev.com/SyntaxHighlighter',
+	'version'	=> '1.2',
+	'author'	=> 'Seong Jae Lee >> http://bluebrown.net',
+	'url'		=> 'https://www.mediawiki.org/wiki/Extgension:SyntaxHighlighter'
 );
 
-$wgSyntaxHighlighterSyntaxList = array();
+$wgHooks['ParserFirstCallInit'][] = 'SyntaxHighlighter::setHooks';
 
-$wgHooks['ParserFirstCallInit'][] = 'wfSyntaxHighlighterParserInit';
-$wgHooks['ParserAfterTidy'][] = 'wfSyntaxHighlighterParserAfterTidy';
+class SyntaxHighlighter {
+	var $mSyntaxList = array();
+	static protected $hookInstalled = false;
 
-function wfSyntaxHighlighterParserInit(Parser &$parser) {
-	$parser->setHook('source', 'wfSyntaxHighlighterRender');
-	return true;
-}
+	static function setHooks( $parser ) {
+		global $wgHooks;
 
-function wfSyntaxHighlighterRender($input, array $args, Parser $parser, PPFrame $frame) {
-	global $wgSyntaxHighlighterSyntaxList;
-
-	$input = str_replace('<', '&lt;', $input);
-	$input = str_replace('>', '&gt;', $input);
-	
-	$lang = 'plain';
-	if( isset( $args['lang'] ) && $args['lang'] ) {
-		$lang = $args['lang'];
-	}
-
-	$attribs = '';
-	foreach( $args as $key => $value ) {
-		if( $key == 'lang' ) {
-			continue;
+		$parser->extSyntaxHighlighter = new self();
+		if( !SyntaxHighlighter::$hookInstalled ) {
+			$wgHooks['ParserAfterTidy'][] = array( $parser->extSyntaxHighlighter, 'addHeadItems' );
+			SyntaxHighlighter::$hookInstalled = true;
 		}
-		$attribs = $attribs.'; '.$key.':'.$value;
+		$parser->setHook( 'source', array( $parser->extSyntaxHighlighter, 'source' ) );
+
+		return true;
 	}
 
-	$syntaxAlias = array(
-		'cpp'		=> 'Cpp',
-		'c'		=> 'Cpp',
-		'csharp'	=> 'CSharp',
-		'c-sharp'	=> 'CSharp',
-		'css'		=> 'Css',
-		'php'		=> 'Php',
-		'text'		=> 'Plain',
-		'plain'		=> 'Plain',
-		'xml'		=> 'Xml',
-		'html'		=> 'Xml',
-		'xhtml'		=> 'Xml',
-		'xslt'		=> 'Xml',
-		'sql'		=> 'Sql',
-		'ps'		=> 'PowerShell',
-		'powershell' 	=> 'PowerShell',
-		'perl'		=> 'Perl',
-		'pl'		=> 'Perl',
-		'delphi'	=> 'Delphi',
-		'python'	=> 'Python',
-		'py'		=> 'Python',
-		'diff'		=> 'Diff',
-		'js'		=> 'JScript',
-		'jscript'	=> 'JScript',
-		'javascript'	=> 'JScript',
-		'bash'		=> 'Bash',
-		'shell'		=> 'Bash',
-		'java'		=> 'Java'
-	);
-	
-	$alias = 'Plain';
-	if( isset( $syntaxAlias[$lang] ) ) {
-		$alias = $syntaxAlias[$lang];
-	} else {
+	function source( $input, array $args, Parser $parser ) {
+
+		$input = str_replace('<', '&lt;', $input);
+		$input = str_replace('>', '&gt;', $input);
+
 		$lang = 'plain';
-	}
-
-	if( count($wgSyntaxHighlighterSyntaxList) == 0) {
-		global $wgScriptPath;
-		$directory = $wgScriptPath.'/extensions/SyntaxHighlighter';
-		$parser->getOutput()->addHeadItem( '
-		<script type="text/javascript" src="'.$directory.'/syntaxhighlighter/scripts/shCore.js"></script>
-		<script type="text/javascript" src="'.$directory.'/syntaxhighlighter/scripts/shAutoloader.js"></script>
-		<link rel="stylesheet" type="text/css" media="screen" href="'.$directory.'/syntaxhighlighter/styles/shCoreMinit.css" />
-		');
-	}
-
-	if( !in_array( $alias, $wgSyntaxHighlighterSyntaxList ) ) {
-		$wgSyntaxHighlighterSyntaxList[$lang] = $alias;
-	}
-
-	return '<pre class="brush:'.$lang.$attribs.'">'.$input.'</pre>';
-}
-
-function wfSyntaxHighlighterParserAfterTidy($parser, &$text) {
-	global $wgSyntaxHighlighterSyntaxList;
-	global $wgScriptPath;
-
-	if( count($wgSyntaxHighlighterSyntaxList) > 0 ) {
-		$prefix = $wgScriptPath.'/extensions/SyntaxHighlighter/syntaxhighlighter/scripts/shBrush';
-		$script = '<script type="text/javascript">';
-		$script = $script . 'SyntaxHighlighter.autoloader(';
-		foreach ($wgSyntaxHighlighterSyntaxList as $key => $value) {
-			$script = $script . '\''. $key . ' ' . $prefix . $value . '.js\',';
+		if( isset( $args['lang'] ) && $args['lang'] ) {
+			$lang = $args['lang'];
 		}
-		$script = substr($script, 0, -1);
-		$script = $script . '); SyntaxHighlighter.all();';
-		$script = $script . '</script>';
-		$text = $text . $script;
+
+		$attribs = '';
+		foreach( $args as $key => $value ) {
+			if( $key == 'lang' ) {
+				continue;
+			}
+			$attribs = $attribs.'; '.$key.':'.'\''.$value.'\'';
+		}
+
+		$syntaxAlias = array(
+			'cpp'		=> 'Cpp',
+			'c'		=> 'Cpp',
+			'csharp'	=> 'CSharp',
+			'c-sharp'	=> 'CSharp',
+			'css'		=> 'Css',
+			'php'		=> 'Php',
+			'text'		=> 'Plain',
+			'plain'		=> 'Plain',
+			'xml'		=> 'Xml',
+			'html'		=> 'Xml',
+			'xhtml'		=> 'Xml',
+			'xslt'		=> 'Xml',
+			'sql'		=> 'Sql',
+			'ps'		=> 'PowerShell',
+			'powershell' 	=> 'PowerShell',
+			'perl'		=> 'Perl',
+			'pl'		=> 'Perl',
+			'delphi'	=> 'Delphi',
+			'python'	=> 'Python',
+			'py'		=> 'Python',
+			'ruby'		=> 'Ruby',
+			'rb'		=> 'Ruby',
+			'diff'		=> 'Diff',
+			'js'		=> 'JScript',
+			'jscript'	=> 'JScript',
+			'javascript'	=> 'JScript',
+			'bash'		=> 'Bash',
+			'shell'		=> 'Bash',
+			'java'		=> 'Java'
+		);
+
+		$alias = 'Plain';
+		if( isset( $syntaxAlias[$lang] ) ) {
+			$alias = $syntaxAlias[$lang];
+		} else {
+			$lang = 'plain';
+		}
+
+		if( !in_array( $alias, $this->mSyntaxList ) ) {
+			$this->mSyntaxList[$lang] = $alias;
+		}
+
+		return '<pre class="brush:'.$lang.$attribs.'">'.$input.'</pre>';
 	}
-	return true;
+
+	function addHeadItems( Parser &$parser, &$text ) {
+		if( $parser->extSyntaxHighlighter !== $this ) {
+			return $parser->extSyntaxHighlighter->addHeadItems( $parser, $text );
+		}
+
+		if( count($this->mSyntaxList) > 0 ) {
+			global $wgScriptPath;
+			global $wgSyntaxHighlighterOptions;
+			$directory = $wgScriptPath.'/extensions/SyntaxHighlighter';
+
+			$scriptTxt = "\n\r";
+			$scriptTxt = $scriptTxt.'<script type="text/javascript" src="'.$directory.'/syntaxhighlighter/scripts/shCore.js"></script>'."\n\r";
+			foreach( $this->mSyntaxList as $key => $value ) {
+				$scriptTxt = $scriptTxt.'<script type="text/javascript" src="'.$directory.'/syntaxhighlighter/scripts/shBrush'.$value.'.js"></script>'."\n\r";
+			}
+			$scriptTxt = $scriptTxt.'<script type="text/javascript">'."\n\r";
+			foreach( $wgSyntaxHighlighterOptions as $key => $value ) {
+				$scriptTxt = $scriptTxt.'SyntaxHighlighter.defaults["'.$key.'"] = '.$value.';'."\n\r";
+			}
+			$scriptTxt = $scriptTxt.'SyntaxHighlighter.all();'."\n\r";
+			$scriptTxt = $scriptTxt.'</script>'."\n\r";
+			$scriptTxt = $scriptTxt.'<link rel="stylesheet" type="text/css" media="screen" href="'.$directory.'/syntaxhighlighter/styles/shCoreMinit.css" />'."\n\r";
+			$parser->GetOutput()->addHeadItem($scriptTxt);
+		}
+
+		return true;
+	}
 }
 ?>
